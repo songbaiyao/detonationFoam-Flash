@@ -1,130 +1,72 @@
-# The two-phase model has been added to the dev branch. Interested parties may switch to the detonationFoam_dev branch.
+# detonationFoam-Flash: a detonation solver with Lagrangian droplet spray
 
-# detonationFoam_V2.0 (based on OpenFOAM 8): An open-source solver for simulation of gaseous detonation based on OpenFOAM
-The description of the governing equations and mathematical models can still be found in the documentation under the version 1.0 branch.
+`detonationFoam-Flash` is a fork of [detonationFoam](https://github.com/JieSun-pku/detonationFoam) (V2.0, based on OpenFOAM 8).
+The three solver types of detonationFoam_V2.0 (`solverTypeEuler`, `solverTypeNS_Sutherland`,
+`solverTypeNS_mixtureAverage`) are merged into a **single executable** whose functionality is
+switched entirely through a dictionary, and an optional **Lagrangian droplet spray cloud**
+(OpenFOAM `basicSprayCloud`) is added with two-way coupling to the density-based gas phase.
 
 ## What's new?
-1. Optimized the code structure (A new dictionary file named ‘solverTypeProperties’ has been added under the constant directory of the case folder to select the solver type, replacing the approach in version 1.0 where three separate solvers were compiled).
 
-3. Fixed an initialization error in the turbulence model.
+1. **Unified solver.** The three per-type solver loop trees are replaced by one solver,
+   `detonationFoam-Flash`, with a single time loop. Everything is switched through
+   `constant/solverTypeProperties` of the case:
 
-4. Modified the selection strategy for reconstructed variable members in convective flux computation (showing improved performance in supersonic combustion ramjet simulations).
-
-## Directory structure
-detonationFoam_V2.0
+   ```C++
+   solverType        Euler;        // Euler | NS_Sutherland | NS_mixtureAverage
+   viscous           false;        // optional explicit override: on | off
+   transportModel    none;         // none | Sutherland | mixtureAverage
+   droplets          off;          // Lagrangian droplet cloud on | off
+   cloudName         sprayCloud;   // cloud name (constant/<cloudName>Properties)
+   SW_track          on;           // leading shock position tracking
+   SW_position_limit 1.0;          // normal exit once the shock reaches this x [m]
    ```
-   solverTypeEuler (Solve Euler equations)  
-   solverTypeNS_Sutherland (Solve N-S equations; transport parameters are calculated according to Sutherland model)  
-   solverTypeNS_mixtureAverage (Solve N-S equations; transport parameters are calculated according to mixture-averaged model)  
-   fluxSchemes_improved (Improved convective flux computation library)  
-   DLBFoam-1.0-1.0_OF8 (Dynamic load balance library: https://github.com/blttkgl/DLBFoam-1.0/tree/v1.0_OF8. Optional)  
-   dynamicMesh2D (2D adaptive mesh refinement library. Optional)  
-   ROUNDSchemes (Low-dissipation reconstruction scheme. https://github.com/ROUNDschemes/libROUNDSchemes. Optional)
-   ```
-   
-## Compiling 
-1. Install OpenFOAM version 8
 
-2. Compile detonationFoam_V2.0
+   The equation treatment of each mode is identical to the original V2.0 solver-type loops.
+
+2. **Lagrangian droplet spray.** With `droplets on`, a `basicSprayCloud` (injection,
+   breakup, evaporation and wall interaction submodels, as in OpenFOAM-8 sprayFoam) is
+   coupled two-way to the gas phase through the standard source terms:
+
+   | Gas equation | Source | Physics |
+   |--------------|--------|---------|
+   | continuity   | `Srho(rho)` | evaporation mass |
+   | momentum     | `SU(U)` | vapor-carrying momentum + semi-implicit drag |
+   | species      | `SYi(i, Yi)` | vapor composition mapped to gas species |
+   | energy       | `Sh(e)` | convective heat transfer + vapor enthalpy |
+
+   The solver requires `constant/g` and a `liquids { ... }` entry in
+   `constant/thermophysicalProperties` when droplets are enabled, and the vaporizing
+   species must not be the `inertSpecie`.
+
+3. **Tutorial.** An example case with evaporating H2O droplets in a 1D detonation is
+   provided in [tutorials/1D_NH3_O2_droplets](tutorials/1D_NH3_O2_droplets).
+
+4. The legacy `solverTypeEuler`, `solverTypeNS_Sutherland` and `solverTypeNS_mixtureAverage`
+   directories were removed from the release; they remain retrievable from the git history
+   of this fork and of the upstream repository.
+
+
+## Compiling
+
+1. Install OpenFOAM version 8.
+
+2. Compile:
    ```
-   cd detonationFoam_V2.0
+   cd detonationFoam-Flash
    ./Allwmake
    ```
+   The executable is `detonationFoam-Flash` (installed to `$FOAM_USER_APPBIN`).
 
-Note: If you want to use the mixture-averaged transport model in detonationFoam, you will need additional files that define the transport properties of each species. Please refer to https://github.com/ZSHtju/reactingDNS_OpenFOAM for guidance on how to generate these files.
+## Credit
 
-## Applications
-Since detonationFoam solver released on Github, it has been successfully applied in simulation of detonation, scramjet, reactive boundary layer. Here are some typical examples.
+- Base solver: [detonationFoam](https://github.com/JieSun-pku/detonationFoam) by Jie Sun
+  (JieSun-pku); solver documentation of previous versions is available in the upstream
+  repository (version 1.0 / V2.0 branches).
+- Built on [OpenFOAM](https://openfoam.org) (version 8, GNU GPL), Foundation version.
+- Dynamic load-balancing chemistry by the [DLBFoam](https://github.com/blttkgl/DLBFoam)
+  authors (Aalto University).
+- Low-dissipation schemes from [ROUNDSchemes](https://github.com/ROUNDschemes/libROUNDSchemes).
+- The dynamicMesh2D adaptive refinement library originates from detonationFoam_V2.0.
 
-### Cellular detonation; Detonation diffraction; Detonation initiation
-<img src="https://github.com/user-attachments/assets/939372de-4903-41bd-9e39-48117f447502" width="800"/>
-
-### Oblique detonation wave
-<img src="https://github.com/user-attachments/assets/2d7d6650-9828-4691-ae96-471ef0d2bd2b" width="800"/>
-
-### Rotating detonation wave
-<img src="https://github.com/user-attachments/assets/8c984cc8-4288-4219-ac20-14e4f071cae8" width="800"/>
-
-### Deflagration to detonation transition (DDT)
-<img src="https://github.com/user-attachments/assets/dbde8036-88c2-42df-a5c4-d567937da749" width="800"/>
-
-
-### Scramjet
-<img src="https://github.com/user-attachments/assets/ac2cb608-8774-4b05-a1c1-20959208730c" width="800"/>
-
-<img src="https://github.com/user-attachments/assets/51541777-ec7a-485a-8d03-9e83c3a47bd7" width="800"/>
-
-
-### Two-phase detonation
-<img src="https://github.com/user-attachments/assets/720100d6-f5cb-412b-90bc-edba045ab4e2" width="800"/>
-
-
-
-## Getting help and reporting bugs
-Please submit a GitHub issue if you found a bug in the program. If you need help with the software or have further questions, contact sunjie_coe@pku.edu.cn and cz@pku.edu.cn.
-
-##  Citation
-If you use the code for your works and researches, please cite: 
-
-   ```
-   J. Sun, Y. Wang, B. Tian, Z. Chen, detonationFoam: An open-source solver for simulation of gaseous detonation based on OpenFOAM, Computer Physics Communications 292 (2023) 108859.
-   ```
-##  Journal Publications Using detonationFoam Solver
-
-### 2026
-[36] Y. Li, J. Su, Y. Lin, X. Meng, P. Chen, F. Xie, H. Yan, Numerical investigation of detonation propagation and attenuation in Tesla-valve channels, Proceedings of the Combustion Institute 42 (2026) 106680.  
-[35] Y. Chai, J. Sun, Z. Ma, S. Wang, J. Wang, Z. Chen, Mode locking and resonance selection in rotating detonation engines under inlet pressure forcing, Journal of Fluid Mechanics, 2026, In press.  
-[34] M. Mousavi, P. Rameshb, B. Lee, D. Jarrahbashi, Numerical analysis of detonation dynamics in ammonia–hydrogen mixtures, International Journal of Hydrogen Energy, 274 (2026) 157250.  
-[33] J. Sun, P. Yang, D. Yu, Y. Wang, Z. Chen, Effects of reflected shock-boundary layer interactions on detonation initiation in shock-focusing systems, Physical Review Fluids, 11 (2026) 093201.  
-[32] G. Cinieri, Z.A. Shah, G. Mehdi, M.G. De Giorgi, Effect of Nanosecond Plasma Preconditioning on Detonation in High-Pressure H₂/O₂ Mixtures: A Multiscale Numerical Study, Flow, Turbulence and Combustion 117 (2026) 23.  
-[31] J. Arcities, P. Popov, E.J. Ching, K. Viswanath, R.F. Johnson, CodeJeNN: A simple C++ neural network generator for physics applications, https://doi.org/10.48550/arXiv.2607.02746.  
-[30] J. Liu, P. Yang, W. Cheng, J. Ding, X. Luo, Interaction of shock wave with sinusoidal fuel-air interface, Advances in Aerodynamics, 8 (2026) 22.  
-[29] C. Li, W. Liang, Q. Zhou, Y. Li, S. Sun, X. Zeng, Effects of chamber geometry and ignition sequence on high-pressure pre-mixed H2/O2 flame propagation and deflagration-to detonation transition, Scientific Reports, in press.  
-[28] M. Li, B. An, M. Sun, P. Li, T. Wang, H. Wei, Y. Wang, H. Zhang, Synergistic flame stabilization and oscillation dynamics in a dual-zone supersonic combustor, Combustion and Flame, 289 (2026) 115031.  
-[27] J. Sun, Y. Wang, S. Xie, S.M. Shaik, H. Zhang, Numerical investigation on detonation attenuation and flame acceleration in channels with obstacle arrays, Physical Review Fluids 11 (2026) 043201.  
-[26] X. Yuan, T. Jin, Numerical study on the influence of jet on the stability of oblique detonation waves in confined space, Propulsion and Energy 2 (2026) 2.  
-[25] Y. Wang, C. Zheng, H. Zhang, Z. Chen, Propagation characteristics of H2–air detonations in double-bend ducts, Frontiers in Mechanical Engineering 12 (2026) DOI: 10.3389/fmech.2026.1761460.  
-[24] C. Euteneuer, S. Ramachandran, S. Yang, Three-dimensional structures of H2/air oblique detonation waves,  AIAA SCITECH 2026 ForumAt: Orlando, FL.  
-[23] D. Cao, Z. Yang, B. Zhang, C. Wen, Detonation diffraction in expansion channels with rounded corner, Combustion and Flame, 283 (2026) 114554.    
-[22] J. Cheng, B. Zhang, C. Wen, Dynamics of detonation propagation in a wedged variable-section channel, Combustion and Flame, 284 (2026) 114634.    
-[21] Y. Li, P. Chen, X. Meng, J Su, X Li, H. Yan, Unreacted pocket closure and jet flame formation in H2/O2 detonations with transverse concentration gradients, Acta Astronautica 240 (2026) 840-853.  
-[20] A. Dahake, A.S. Karthik, R.K. Singh, A.V. Singh, Investigating the effect of ozonolysis on the structure and dynamics of ethylene–oxygen–ozone detonations, Combustion and Flame 285 (2026) 114716.  
-[19] X. Yuan, T. Jin, Dynamic response of the unstable oblique detonation wave in confined space via different wedge rotation, Aerospace Science and Technology, 170 (2026) 111520.  
-
-### 2025
-[18] M. Li, B. An, P. Li, M. Sun, T. Wang, J. Sun, Y. Wang, H. Zhang, Ignition dynamics of a supersonic combustor with parallel dual combustion zones, AIAA Journal, 64 (2026) 2593-2604.  
-[17] J. Sun, Z. Chen, Bifurcation of cellular detonation structure in a mixture with two-stage reactions, Journal of Fluid Mechanics 1022 (2025) A14.  
-[16] J. Sun, S.M. Shaik, V.B. Nguyen, H. Zhang, Detonation chemistry and propagation characteristics in partially cracked ammonia, Proceedings of the Combustion Institute 41 (2025) 105910.  
-[15] J. Hu, B. Zhang, Propulsion performance and detonation wave dynamics in a rotating detonation combustor: Effects of nonideal inflow conditions, Aerospace Science and Technology 168 (2025) 110857.  
-[14] J. Sun, Y. Wang, S.M. Shaik, H. Zhang, Numerical investigation of detonation initiation and propagation in non-uniformly cracked ammonia and air mixtures, Combustion and Flame 281 (2025) 114439.  
-[13] Y. Liu, H. Wang, R. Mével, K. Luo, J. Fan, Numerical study of wedge-induced oblique detonation waves in homogeneous and inhomogeneous n-dodecane/air mixtures, Physics of Fluids 37 (2025) 066118.  
-[12] Z. Yang, B. Zhang, Typical onset modes of DDT and behavior of strong transverse shocks, Chinese Journal of Aeronautics (2025) 103602.  
-[11] J. Sun, D. Yu, P. Yang, Y. Wang, S. Wang, Z. Chen, Detonation initiation induced by dual hot spots: a computational study, Journal of Fluid Mechanics 1010 (2025) A60.  
-[10] J. Sun, P. Yang, Z. Chen, Dynamic interaction patterns of oblique detonation waves with boundary layers in hypersonic reactive flows, Combustion and Flame 271 (2025) 113832.  
-
-### 2024
-[9] Z. Yang, B. Zhang, H.D. Ng, Experimental observations of gaseous cellular detonation reflection, Proceedings of the Combustion Institute 40 (2024) 105519.  
-[8] Z. Yang, B. Zhang, Investigation on the dynamics of shock wave generated by detonation reflection, Combustion and Flame 270 (2024) 113791.  
-[7] J. Sun, P. Yang, Y. Wang, Z. Chen, Numerical study on detonation initiation by multiple hot spots, Proceedings of the Combustion Institute 40 (2024) 105191.  
-[6] Y. Liu, H. Wang, K. Luo, J. Fan, Numerical simulations of wedge-induced oblique detonation waves in ammonia/hydrogen/air mixtures, International Journal of Hydrogen Energy 86 (2024) 199-207.  
-[5] J. Hu, B. Zhang, Time/frequency domain analysis of detonation wave propagation mechanism in a linear rotating detonation combustor, Applied Thermal Engineering 255 (2024) 124014.  
-[4] J. Hu, J. Cheng, B. Zhang, H.D. Ng, The diffraction and re-initiation characteristics of gaseous detonations with an irregular cellular structure, Aerospace Science and Technology 150 (2024) 109240.  
-
-### 2023
-[3] J. Sun, P. Yang, B. Tian, Z. Chen, Evolution and Control of Oblique Detonation Wave Structure in Unsteady Inflow, AIAA Journal 61 (2023) 4808-4820.  
-[2] J. Sun, Y. Wang, B. Tian, Z. Chen, detonationFoam: An open-source solver for simulation of gaseous detonation based on OpenFOAM, Computer Physics Communications 292 (2023) 108859.  
-
-### 2022
-[1] J. Sun, P. Yang, B. Tian, Z. Chen, Effects of wedge-angle change on the evolution of oblique detonation wave structure, Physics of Fluids 34 (2022) 096112.  
-
-
-
-
-
-
-
-
-
-
-
-
+```

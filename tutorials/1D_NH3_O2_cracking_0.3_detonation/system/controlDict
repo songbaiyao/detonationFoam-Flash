@@ -21,10 +21,9 @@ libs
   "libdynamicFvMesh2D.so"
   //"$FOAM_CASE/constant/foam/libc_pyjac.so"
   "libchemistryModel_DLB.so"
-  "libODE_DLB.so"
 );
 
-application     detonationFoam_V2.0;
+application     detonationFoam-Flash;
 
 startFrom       startTime;
 
